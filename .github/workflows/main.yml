@@ -44,40 +44,47 @@ jobs:
         run: |
           unzip -o app.zip
 
-      - name: Safely Patch buildozer.spec
+      - name: Patch buildozer.spec for Stable NDK
         run: |
           python3 -c "
+          import re
+
           with open('buildozer.spec', 'r') as f:
-              lines = f.readlines()
+              content = f.read()
 
-          new_lines = []
-          license_found = False
+          # Lock NDK to stable version 25b
+          if 'android.ndk =' in content:
+              content = re.sub(r'#?\s*android\.ndk\s*=.*', 'android.ndk = 25b', content)
+          else:
+              content += '\nandroid.ndk = 25b\n'
 
-          for line in lines:
-              stripped = line.strip()
-              if stripped.startswith('requirements'):
-                  parts = line.split('=', 1)
-                  reqs = [r.strip() for r in parts[1].split(',') if r.strip() and not r.strip().startswith('cython')]
-                  reqs.append('cython==0.29.36')
-                  new_lines.append(f'requirements = {\",\".join(reqs)}\n')
-              elif stripped.startswith('android.accept_sdk_license') or stripped.startswith('#android.accept_sdk_license') or stripped.startswith('# android.accept_sdk_license'):
-                  new_lines.append('android.accept_sdk_license = True\n')
-                  license_found = True
-              else:
-                  new_lines.append(line)
+          # Auto accept license
+          if 'android.accept_sdk_license' in content:
+              content = re.sub(r'#?\s*android\.accept_sdk_license\s*=.*', 'android.accept_sdk_license = True', content)
+          else:
+              content += '\nandroid.accept_sdk_license = True\n'
 
-          if not license_found:
-              new_lines.append('\nandroid.accept_sdk_license = True\n')
+          # Set API levels
+          content = re.sub(r'#?\s*android\.api\s*=.*', 'android.api = 33', content)
+          content = re.sub(r'#?\s*android\.minapi\s*=.*', 'android.minapi = 21', content)
+
+          # Ensure Cython version
+          def fix_reqs(m):
+              reqs = [r.strip() for r in m.group(1).split(',') if r.strip() and not r.strip().startswith('cython')]
+              reqs.append('cython==0.29.36')
+              return 'requirements = ' + ','.join(reqs)
+
+          content = re.sub(r'^requirements\s*=\s*(.*)$', fix_reqs, content, flags=re.MULTILINE)
 
           with open('buildozer.spec', 'w') as f:
-              f.writelines(new_lines)
+              f.write(content)
 
-          print('buildozer.spec safely patched!')
+          print('buildozer.spec successfully configured!')
           "
 
       - name: Build APK with Buildozer
         run: |
-          yes | buildozer -v android debug
+          buildozer -v android debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
