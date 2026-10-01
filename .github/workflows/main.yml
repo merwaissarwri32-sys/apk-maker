@@ -33,7 +33,7 @@ jobs:
             libssl-dev openssl libgdbm-dev libgdbm-compat-dev \
             liblldb-dev libffi-dev libreadline-dev libgl1-mesa-dev \
             libgles2-mesa-dev xclip xsel ccache git python3-setuptools \
-            unzip zip autoconf libtool pkg-config
+            unzip zip autoconf libtool pkg-config wget
 
       - name: Install Python build tools
         run: |
@@ -44,12 +44,23 @@ jobs:
         run: |
           unzip -o app.zip
 
+      - name: Download and Setup Android NDK r25b
+        run: |
+          cd /home/runner
+          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+          unzip -q android-ndk-r25b-linux.zip
+          rm android-ndk-r25b-linux.zip
+
       - name: Configure buildozer.spec
         run: |
           python3 -c "
-          import re
+          import os, re
 
-          with open('buildozer.spec', 'r') as f:
+          spec_file = 'buildozer.spec'
+          if not os.path.exists(spec_file):
+              os.system('buildozer init')
+
+          with open(spec_file, 'r') as f:
               content = f.read()
 
           def set_config(key, val, text):
@@ -62,7 +73,7 @@ jobs:
           content = set_config('android.api', '33', content)
           content = set_config('android.minapi', '21', content)
           content = set_config('android.build_tools', '33.0.2', content)
-          content = set_config('android.ndk', '25b', content)
+          content = set_config('android.ndk_path', '/home/runner/android-ndk-r25b', content)
           content = set_config('android.accept_sdk_license', 'True', content)
 
           def fix_reqs(m):
@@ -72,15 +83,17 @@ jobs:
 
           content = re.sub(r'^requirements\s*=\s*(.*)$', fix_reqs, content, flags=re.MULTILINE)
 
-          with open('buildozer.spec', 'w') as f:
+          with open(spec_file, 'w') as f:
               f.write(content)
 
-          print('buildozer.spec configured successfully!')
+          print('buildozer.spec successfully configured with NDK r25b!')
           "
 
       - name: Build APK with Buildozer
+        env:
+          ANDROID_NDK_HOME: /home/runner/android-ndk-r25b
         run: |
-          yes | buildozer -v android debug
+          buildozer -v android debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
