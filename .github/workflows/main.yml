@@ -44,7 +44,7 @@ jobs:
         run: |
           unzip -o app.zip
 
-      - name: Patch buildozer.spec for Stable NDK
+      - name: Configure buildozer.spec
         run: |
           python3 -c "
           import re
@@ -52,23 +52,19 @@ jobs:
           with open('buildozer.spec', 'r') as f:
               content = f.read()
 
-          # Lock NDK to stable version 25b
-          if 'android.ndk =' in content:
-              content = re.sub(r'#?\s*android\.ndk\s*=.*', 'android.ndk = 25b', content)
-          else:
-              content += '\nandroid.ndk = 25b\n'
+          def set_config(key, val, text):
+              pattern = r'^#?\s*' + re.escape(key) + r'\s*=.*$'
+              if re.search(pattern, text, flags=re.MULTILINE):
+                  return re.sub(pattern, f'{key} = {val}', text, flags=re.MULTILINE)
+              else:
+                  return text + f'\n{key} = {val}\n'
 
-          # Auto accept license
-          if 'android.accept_sdk_license' in content:
-              content = re.sub(r'#?\s*android\.accept_sdk_license\s*=.*', 'android.accept_sdk_license = True', content)
-          else:
-              content += '\nandroid.accept_sdk_license = True\n'
+          content = set_config('android.api', '33', content)
+          content = set_config('android.minapi', '21', content)
+          content = set_config('android.build_tools', '33.0.2', content)
+          content = set_config('android.ndk', '25b', content)
+          content = set_config('android.accept_sdk_license', 'True', content)
 
-          # Set API levels
-          content = re.sub(r'#?\s*android\.api\s*=.*', 'android.api = 33', content)
-          content = re.sub(r'#?\s*android\.minapi\s*=.*', 'android.minapi = 21', content)
-
-          # Ensure Cython version
           def fix_reqs(m):
               reqs = [r.strip() for r in m.group(1).split(',') if r.strip() and not r.strip().startswith('cython')]
               reqs.append('cython==0.29.36')
@@ -79,12 +75,12 @@ jobs:
           with open('buildozer.spec', 'w') as f:
               f.write(content)
 
-          print('buildozer.spec successfully configured!')
+          print('buildozer.spec configured successfully!')
           "
 
       - name: Build APK with Buildozer
         run: |
-          buildozer -v android debug
+          yes | buildozer -v android debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
