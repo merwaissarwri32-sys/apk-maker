@@ -48,18 +48,6 @@ jobs:
         run: |
           if [ -f app.zip ]; then unzip -o app.zip; fi
 
-      - name: Download NDK r25b & Inject into r28c path
-        run: |
-          cd /home/runner
-          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
-          unzip -q android-ndk-r25b-linux.zip
-          rm android-ndk-r25b-linux.zip
-          
-          # جایگذاری مستقیم محتوای NDK r25b در مسیرهای متداول Buildozer
-          mkdir -p /home/runner/.buildozer/android/platform
-          cp -r /home/runner/android-ndk-r25b /home/runner/.buildozer/android/platform/android-ndk-r28c
-          cp -r /home/runner/android-ndk-r25b /home/runner/.buildozer/android/platform/android-ndk-r25b
-
       - name: Configure buildozer.spec
         run: |
           python3 -c "
@@ -81,28 +69,26 @@ jobs:
 
           content = set_config('android.api', '33', content)
           content = set_config('android.minapi', '21', content)
-          content = set_config('android.build_tools', '33.0.2', content)
-          content = set_config('android.ndk', '25b', content)
-          content = set_config('android.ndk_path', '/home/runner/.buildozer/android/platform/android-ndk-r25b', content)
+          content = set_config('android.ndk_api', '21', content)
           content = set_config('android.accept_sdk_license', 'True', content)
 
-          def fix_reqs(m):
+          # حذف cython از requirements اندروید
+          def clean_reqs(m):
               reqs = [r.strip() for r in m.group(1).split(',') if r.strip() and 'cython' not in r.lower()]
-              reqs.append('cython==0.29.36')
+              if not reqs:
+                  reqs = ['python3', 'kivy']
               return 'requirements = ' + ','.join(reqs)
 
-          content = re.sub(r'^requirements\s*=\s*(.*)$', fix_reqs, content, flags=re.MULTILINE)
+          content = re.sub(r'^requirements\s*=\s*(.*)$', clean_reqs, content, flags=re.MULTILINE)
 
           with open(spec_file, 'w') as f:
               f.write(content)
 
-          print('buildozer.spec configuration complete!')
+          print('buildozer.spec successfully fixed!')
           "
 
       - name: Build APK with Buildozer
         env:
-          ANDROID_NDK_HOME: /home/runner/.buildozer/android/platform/android-ndk-r25b
-          ANDROID_NDK_ROOT: /home/runner/.buildozer/android/platform/android-ndk-r25b
           APP_ANDROID_ACCEPT_SDK_LICENSES: "1"
         run: |
           buildozer -v android debug
