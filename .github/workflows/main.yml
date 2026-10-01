@@ -44,24 +44,35 @@ jobs:
         run: |
           unzip -o app.zip
 
-      - name: Patch buildozer.spec for Cython and License
+      - name: Safely Patch buildozer.spec
         run: |
           python3 -c "
-          import re
-          try:
-              with open('buildozer.spec', 'r') as f:
-                  content = f.read()
-              content = re.sub(r'#?\s*android\.accept_sdk_license\s*=\s*.*', 'android.accept_sdk_license = True', content)
-              def fix_reqs(m):
-                  items = [i.strip() for i in m.group(1).split(',') if i.strip() and not i.strip().startswith('cython')]
-                  items.append('cython==0.29.36')
-                  return f'requirements = {\",\".join(items)}'
-              content = re.sub(r'^requirements\s*=\s*(.*)$', fix_reqs, content, flags=re.MULTILINE)
-              with open('buildozer.spec', 'w') as f:
-                  f.write(content)
-              print('buildozer.spec patched successfully')
-          except Exception as e:
-              print(f'Error patching spec: {e}')
+          with open('buildozer.spec', 'r') as f:
+              lines = f.readlines()
+
+          new_lines = []
+          license_found = False
+
+          for line in lines:
+              stripped = line.strip()
+              if stripped.startswith('requirements'):
+                  parts = line.split('=', 1)
+                  reqs = [r.strip() for r in parts[1].split(',') if r.strip() and not r.strip().startswith('cython')]
+                  reqs.append('cython==0.29.36')
+                  new_lines.append(f'requirements = {\",\".join(reqs)}\n')
+              elif stripped.startswith('android.accept_sdk_license') or stripped.startswith('#android.accept_sdk_license') or stripped.startswith('# android.accept_sdk_license'):
+                  new_lines.append('android.accept_sdk_license = True\n')
+                  license_found = True
+              else:
+                  new_lines.append(line)
+
+          if not license_found:
+              new_lines.append('\nandroid.accept_sdk_license = True\n')
+
+          with open('buildozer.spec', 'w') as f:
+              f.writelines(new_lines)
+
+          print('buildozer.spec safely patched!')
           "
 
       - name: Build APK with Buildozer
